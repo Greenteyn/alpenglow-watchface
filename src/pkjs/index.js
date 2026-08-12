@@ -293,10 +293,73 @@ function sunTimesForLocalDay(base, dayOffset, lat, lon) {
     return SunCalc.getTimes(noon, lat, lon);
 }
 
+// MOON EVENTS ARE FOUND BY SCANNING THE DAY, not by SunCalc.getMoonTimes, which
+// was measured to fail in three distinct ways. It samples the altitude every two
+// hours and solves a quadratic per interval, and that resolution is not enough:
+//
+//   1. It drops events. Over 120 days at four locations (Almaty, Moscow,
+//      Singapore, Reykjavik) it lost 4–6 moonrises and 4–5 moonsets each — about
+//      one bad day per fortnight anywhere on Earth. On 2026-08-12 in Almaty the
+//      moon rose at 04:05 and set at 18:55, yet the result carried no `rise`.
+//   2. It returns events from the wrong day. On 2026-09-08 in Almaty it reported
+//      a moonrise of 2026-09-09 02:55 while that day's real moonrise was 01:39 —
+//      tomorrow's time shown as today's.
+//   3. Its alwaysUp / alwaysDown flags lie. On 2026-09-03 in Reykjavik it claimed
+//      the moon never sets, on a day when it rose at 00:53 and set at 23:00.
+//
+// A missing event is a real case (near the poles, and once a month anywhere), so
+// none of this is distinguishable downstream from an honest answer — the watch
+// would print an empty or wrong value on an ordinary day.
+//
+// The scan samples altitude every 10 minutes and refines each crossing by
+// bisection to about two seconds. 144 samples plus a few dozen refinement steps
+// cost nothing on a phone and run once per packet.
+// SunCalc 2.x reports altitude in DEGREES (`altitude: (h + astroRefraction(h)) / rad`),
+// so the threshold is degrees too. Written as radians it silently becomes 0.002°.
+var MOON_HC_DEG = 0.133;                   // horizon threshold, parallax included
+var MOON_SCAN_STEP_MS = 10 * 60 * 1000;
+var MOON_REFINE_STEPS = 8;                 // 10 min → ~2 s
+
+function moonAltitudeAt(ts, lat, lon) {
+    return SunCalc.getMoonPosition(new Date(ts), lat, lon).altitude - MOON_HC_DEG;
+}
+
+// Bisection between two samples that straddle the horizon.
+function refineCrossing(t0, a0, t1, lat, lon) {
+    for (var i = 0; i < MOON_REFINE_STEPS; i++) {
+        var mid = Math.round((t0 + t1) / 2);
+        var am = moonAltitudeAt(mid, lat, lon);
+        if ((a0 < 0) === (am < 0)) {
+            t0 = mid;
+            a0 = am;
+        } else {
+            t1 = mid;
+        }
+    }
+    return Math.round((t0 + t1) / 2);
+}
+
+// First rise and first set within the local day; null where the event does not
+// happen — which, unlike the library's answer, is then the truth.
 function moonTimesForLocalDay(base, dayOffset, lat, lon) {
-    var noon = new Date(base.getFullYear(), base.getMonth(),
-                        base.getDate() + dayOffset, 12, 0, 0, 0);
-    return SunCalc.getMoonTimes(noon, lat, lon);
+    var dayStart = new Date(base.getFullYear(), base.getMonth(),
+                            base.getDate() + dayOffset, 0, 0, 0, 0).getTime();
+    var end = dayStart + 24 * 60 * 60 * 1000;
+    var times = { rise: null, set: null };
+    var prevT = dayStart;
+    var prev = moonAltitudeAt(dayStart, lat, lon);
+
+    for (var t = dayStart + MOON_SCAN_STEP_MS; t <= end; t += MOON_SCAN_STEP_MS) {
+        var cur = moonAltitudeAt(t, lat, lon);
+        if (prev < 0 && cur >= 0 && !times.rise) {
+            times.rise = new Date(refineCrossing(prevT, prev, t, lat, lon));
+        } else if (prev >= 0 && cur < 0 && !times.set) {
+            times.set = new Date(refineCrossing(prevT, prev, t, lat, lon));
+        }
+        prevT = t;
+        prev = cur;
+    }
+    return times;
 }
 
 // The two light windows of a day. In the morning the order is blue → golden
