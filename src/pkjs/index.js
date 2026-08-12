@@ -293,32 +293,15 @@ function sunTimesForLocalDay(base, dayOffset, lat, lon) {
     return SunCalc.getTimes(noon, lat, lon);
 }
 
-// MOON EVENTS ARE FOUND BY SCANNING THE DAY, not by SunCalc.getMoonTimes, which
-// was measured to fail in three distinct ways. It samples the altitude every two
-// hours and solves a quadratic per interval, and that resolution is not enough:
-//
-//   1. It drops events. Over 120 days at four locations (Almaty, Moscow,
-//      Singapore, Reykjavik) it lost 4–6 moonrises and 4–5 moonsets each — about
-//      one bad day per fortnight anywhere on Earth. On 2026-08-12 in Almaty the
-//      moon rose at 04:05 and set at 18:55, yet the result carried no `rise`.
-//   2. It returns events from the wrong day. On 2026-09-08 in Almaty it reported
-//      a moonrise of 2026-09-09 02:55 while that day's real moonrise was 01:39 —
-//      tomorrow's time shown as today's.
-//   3. Its alwaysUp / alwaysDown flags lie. On 2026-09-03 in Reykjavik it claimed
-//      the moon never sets, on a day when it rose at 00:53 and set at 23:00.
-//
-// A missing event is a real case (near the poles, and once a month anywhere), so
-// none of this is distinguishable downstream from an honest answer — the watch
-// would print an empty or wrong value on an ordinary day.
-//
-// The scan samples altitude every 10 minutes and refines each crossing by
-// bisection to about two seconds. 144 samples plus a few dozen refinement steps
-// cost nothing on a phone and run once per packet.
-// SunCalc 2.x reports altitude in DEGREES (`altitude: (h + astroRefraction(h)) / rad`),
-// so the threshold is degrees too. Written as radians it silently becomes 0.002°.
-var MOON_HC_DEG = 0.133;                   // horizon threshold, parallax included
+// Moon events are scanned rather than taken from SunCalc.getMoonTimes: sampling
+// altitude every two hours, that function drops events, sometimes returns one
+// belonging to the next day, and raises alwaysUp on days when the moon does both
+// rise and set. A missing event is legitimate (near the poles, and once a month
+// anywhere), so none of it can be caught downstream.
+var MOON_HC_DEG = 0.133;                   // horizon in DEGREES: SunCalc 2.x
+                                           // reports altitude in degrees
 var MOON_SCAN_STEP_MS = 10 * 60 * 1000;
-var MOON_REFINE_STEPS = 8;                 // 10 min → ~2 s
+var MOON_REFINE_STEPS = 8;                 // bisection: 10 min → ~2 s
 
 function moonAltitudeAt(ts, lat, lon) {
     return SunCalc.getMoonPosition(new Date(ts), lat, lon).altitude - MOON_HC_DEG;
@@ -339,8 +322,7 @@ function refineCrossing(t0, a0, t1, lat, lon) {
     return Math.round((t0 + t1) / 2);
 }
 
-// First rise and first set within the local day; null where the event does not
-// happen — which, unlike the library's answer, is then the truth.
+// First rise and first set within the local day; null when it truly does not happen.
 function moonTimesForLocalDay(base, dayOffset, lat, lon) {
     var dayStart = new Date(base.getFullYear(), base.getMonth(),
                             base.getDate() + dayOffset, 0, 0, 0, 0).getTime();
