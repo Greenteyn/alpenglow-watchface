@@ -2,6 +2,8 @@
 
 A Pebble watchface for landscape and night photography: it tells you when the light happens.
 
+**[Install from the Pebble appstore](https://apps.repebble.com/be7ddcf0613941d1842c8310)**
+
 <p>
   <img src="screenshots/clock.png" width="200" alt="Clock screen">
   <img src="screenshots/astro.png" width="200" alt="Astro screen">
