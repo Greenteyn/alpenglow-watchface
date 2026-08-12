@@ -1,0 +1,57 @@
+#!/bin/sh
+#
+# pre-push: keep the debug location override out of the remote repository.
+#
+# DEBUG_LOCATION in src/pkjs/index.js replaces geolocation with a fixed point
+# (the constant itself explains why). In the repository it must be null. The same
+# invariant is checked by `RELEASE=1 pebble build` (check_debug_location in
+# wscript), but a build is not always run before a push — this hook catches what
+# has already been committed.
+#
+# COMMITS being pushed are checked, not the working copy: an override enabled
+# locally does not block a push until it is committed.
+#
+# Install (once per clone):  git config core.hooksPath .githooks
+# Bypass in an emergency:    git push --no-verify
+#
+
+FILE='src/pkjs/index.js'
+ZERO='0000000000000000000000000000000000000000'
+status=0
+
+# stdin: <local ref> <local sha> <remote ref> <remote sha>
+while read -r local_ref local_sha remote_ref remote_sha; do
+    # Branch deletion (zero sha) — nothing to check.
+    [ "$local_sha" = "$ZERO" ] && continue
+
+    # The file may be absent from this commit — nothing to check either.
+    content=$(git show "$local_sha:$FILE" 2>/dev/null </dev/null) || continue
+
+    # Value of the top-level declaration, collected up to the first `;` so it
+    # survives being split across lines. Mentions in comments or console.log do
+    # not match the `^var` anchor.
+    value=$(printf '%s\n' "$content" | awk '
+        /^var[ \t]+DEBUG_LOCATION[ \t]*=/ { collecting = 1 }
+        collecting {
+            buf = buf $0
+            if (index($0, ";")) {
+                sub(/^var[ \t]+DEBUG_LOCATION[ \t]*=[ \t]*/, "", buf)
+                sub(/;.*$/, "", buf)
+                gsub(/^[ \t]+|[ \t]+$/, "", buf)
+                print buf
+                exit
+            }
+        }')
+
+    [ -z "$value" ] && continue
+    [ "$value" = "null" ] && continue
+
+    echo "pre-push: DEBUG_LOCATION = $value" >&2
+    echo "          file:   $FILE" >&2
+    echo "          branch: $local_ref" >&2
+    echo "          The debug location override must not reach the repository." >&2
+    echo "          Set DEBUG_LOCATION = null, or push with --no-verify." >&2
+    status=1
+done
+
+exit $status
