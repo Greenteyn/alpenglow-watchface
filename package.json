@@ -1,0 +1,69 @@
+{
+  "name": "alpenglow-watchface",
+  "author": "greenteyn",
+  "version": "1.0.0",
+  "keywords": [
+    "pebble-app"
+  ],
+  "private": true,
+  "license": "MIT",
+  "dependencies": {
+    "@rebble/clay": "^1.0.10",
+    "suncalc": "^2.0.1"
+  },
+  "pebble": {
+    "displayName": "Alpenglow",
+    "uuid": "9f2c4d3a-7b61-4e0c-9a2d-1c8f5b3e64a2",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "targetPlatforms": [
+      "basalt",
+      "chalk",
+      "diorite",
+      "emery",
+      "flint",
+      "gabbro"
+    ],
+    "watchapp": {
+      "watchface": true
+    },
+    "capabilities": [
+      "location",
+      "configurable"
+    ],
+    "messageKeys": [
+      "SunRise",
+      "SunSet",
+      "SunGoldenStart",
+      "SunGoldenEnd",
+      "SunBlueStart",
+      "SunBlueEnd",
+      "SunAstroDusk",
+      "SunAstroDawn",
+      "SunDawn",
+      "SunGoldenAmEnd",
+      "SunGoldenPmStart",
+      "SunDusk",
+      "MoonRise",
+      "MoonSet",
+      "MoonPhase",
+      "MoonIllum",
+      "WxCloud",
+      "WxVisibility",
+      "WxWind",
+      "DataTs",
+      "HourFormat",
+      "WeatherUnits",
+      "NotifyLeadTime",
+      "UpdateInterval",
+      "AstroTimeout",
+      "StopwatchIdleTimeout",
+      "StopwatchMaxDuration",
+      "ShowStopwatch",
+      "Refresh"
+    ],
+    "resources": {
+      "media": []
+    }
+  }
+}

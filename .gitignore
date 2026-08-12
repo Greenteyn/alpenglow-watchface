@@ -1,0 +1,10 @@
+# Pebble / waf build artifacts
+build/
+.lock-waf*
+*.pbw
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
