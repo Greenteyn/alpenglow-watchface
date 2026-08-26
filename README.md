@@ -30,6 +30,11 @@ auto-stop so a forgotten measurement does not drain the battery.
 Optionally the watch vibrates a configurable number of minutes before the next light
 window starts — enough lead time to reach the spot.
 
+Listening for taps keeps the accelerometer running all the time. Switching taps off in the
+settings shuts the sensor down and leaves the Clock alone on screen — depending on how the
+watch is worn, that can stretch a charge up to about twice as far. The light window alert
+works either way.
+
 <details>
 <summary>The same screens on a black-and-white and on a round display</summary>
 

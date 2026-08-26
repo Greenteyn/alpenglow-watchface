@@ -2,13 +2,13 @@
 
 #include "geom.h"
 
-// The Newton form "r = (r + v/r)/2 until r == prev" LOOPS FOREVER on values of
-// the form k²−1: the root sits just below an integer, the iteration oscillates
-// between k−1 and k, and comparing against the previous step alone never
-// detects that period. There are 199 such values below 40 000, and the Astro
-// layout on chalk hit 5040 = 71²−1 — update_proc stopped returning and the
-// watchdog killed the app. The bit-shift form below is bounded by the word size
-// and always terminates.
+// DO NOT REWRITE AS NEWTON'S METHOD. The form "r = (r + v/r)/2 until r == prev"
+// LOOPS FOREVER on values of the form k²−1: the iteration oscillates between
+// k−1 and k, and comparing against the previous step alone never detects that
+// period. There are 199 such values below 40 000, and the layout does hit them
+// (5040 = 71²−1 on chalk) — update_proc never returns and the watchdog kills
+// the app. The bit-shift form below is bounded by the word size and always
+// terminates.
 int32_t isqrt32(int32_t v) {
   if (v <= 0) return 0;
   int32_t rem = v, root = 0, bit = 1 << 30;

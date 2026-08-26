@@ -25,7 +25,6 @@ typedef struct {
   int32_t from_deg; // 0..360
   int32_t to_deg;   // 0..360
   RingArcKind kind;
-  bool valid;
 } RingArc;
 
 // Local moment (Unix seconds) → angle on the ring, 0..360.

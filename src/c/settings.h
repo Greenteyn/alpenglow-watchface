@@ -6,20 +6,21 @@
 
 typedef struct {
   bool use_24h;              // HourFormat (1/0)
-  // WeatherUnits: false = m/s and km, true = mph and miles. The packet always
-  // arrives in SI — the watch converts at draw time, just as it does for the
-  // time format, so flipping the switch shows immediately without a new packet.
-  bool use_imperial;
+  bool use_imperial;         // WeatherUnits: false = m/s and km (see packet.h)
   // NotifyLeadTime: vibrate this many minutes before a light window starts
   // (0 = off). The watch computes the moment from packet times — see main.c.
   uint16_t notify_lead_min;
+  // TapControl: whether the watchface listens for taps at all. Off, it drops the
+  // accelerometer subscription (which otherwise runs continuously) and the Clock
+  // becomes the only screen, the tap being the only way to reach the others.
+  // Kept apart from ShowStopwatch on purpose: this switch decides whether there
+  // is a cycle, that one decides how long it is.
+  bool tap_control;
   uint16_t astro_timeout_sec;   // AstroTimeout, auto-return Astro→Clock (0 = off)
   uint16_t sw_idle_timeout_sec; // StopwatchIdleTimeout, idle exit to Clock (0 = off)
   uint16_t sw_max_duration_min; // StopwatchMaxDuration, auto-stop in minutes (0 = no limit)
-  // ShowStopwatch: whether the stopwatch screen stays in the tap cycle. Turning
-  // it off drops the third screen entirely (Clock↔Astro) rather than hiding its
-  // readout: not everyone needs a stopwatch, and an extra screen makes the
-  // cycle longer for everyone else.
+  // ShowStopwatch: whether the stopwatch screen stays in the tap cycle. Off, the
+  // third screen goes entirely (Clock↔Astro) rather than losing its readout.
   bool show_stopwatch;
 } Settings;
 
