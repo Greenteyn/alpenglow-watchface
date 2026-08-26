@@ -7,8 +7,7 @@
 //
 // ARCS are drawn with graphics_fill_radial at a 1 px thickness rather than
 // graphics_draw_arc: draw_arc has no thickness parameter, while fill_radial is
-// the same primitive that draws the day ring here, with behaviour already
-// verified on all six platforms.
+// the same primitive that draws the day ring here.
 //
 // ANGLES follow the ring: 0° at the top, clockwise. The source arcs are SVG
 // (large-arc/sweep flags) and are converted here into angle pairs; the original
@@ -19,7 +18,7 @@
 
 // Stroke width. Exactly 1 px, on a 24 px icon too: the SDK honours ODD values
 // only (icons.h) and the next available one is 3 px — an eighth of the icon
-// height. There is no way to get the 1.5 px stroke the design asks for.
+// height.
 #define ICON_STROKE 1
 
 typedef struct { int x, y, s; } Box;
@@ -165,7 +164,6 @@ static const uint8_t ICON_INK[ICON_GLYPH_COUNT][2] = {
   [ICON_BLUE]      = {  34, 132 },
   [ICON_MOONRISE]  = {  38, 126 },
   [ICON_MOONSET]   = {  38, 126 },
-  [ICON_TIMER]     = {  22, 144 },
   [ICON_LINK]      = {  54, 106 },
   [ICON_LINKSTALE] = {  54, 106 },
   [ICON_NOLINK]    = {  20, 140 },  // the strike-through is symmetric
@@ -180,16 +178,14 @@ static const uint8_t MOON_INK[2] = { 16, 144 };
 // whole one.
 //
 // The GOTHIC cap-height centre is 0.665 of the point size from the top of the
-// line box (measured: 9 / 12 / 16.5 / 18.5 px at 14 / 18 / 24 / 28 — see
-// icons.h).
+// line box (measured: 9 / 12 / 16.5 / 18.5 px at 14 / 18 / 24 / 28).
 #define CAP_CENTER2(size) ((4 * (size)) / 3)
 
-// The drawing centre is taken from the ROUNDED edges, not from ideal geometry.
-// len() rounds each edge separately: on an 18 px icon the sunrise drawing at
-// 16..120 lands on rows 2..14, so its centre is 0.5 px above the square's centre
-// rather than the 1.35 px the continuous grid predicts. Measured on emery, a
-// correction based on the ideal centre pushed sunrise and sunset 1 px below
-// their labels — an error of the same size as the defect it was fixing.
+// The drawing centre is taken from the ROUNDED edges, not from ideal geometry:
+// len() rounds each edge separately, so on an 18 px icon the sunrise drawing at
+// 16..120 lands on rows 2..14 — a centre 0.5 px above the square's, where the
+// continuous grid predicts 1.35 px. A correction based on the ideal centre
+// pushes sunrise and sunset 1 px below their labels.
 static int ink_center2(const uint8_t ink[2], int size) {
   Box b = { 0, 0, size };
   return len(&b, ink[0]) + len(&b, ink[1]);
@@ -208,12 +204,11 @@ int icon_moon_text_dy(int size) {
   return (size < 8) ? 0 : text_dy(MOON_INK, size);
 }
 
-void icon_draw(GContext *ctx, IconGlyph g, GPoint origin, int size, GColor color,
-               IconLook look) {
+void icon_draw(GContext *ctx, IconGlyph g, GPoint origin, int size,
+               GColor color) {
   if (size < 8) return;
   Box box = { origin.x, origin.y, size };
   const Box *b = &box;
-  bool solid = (look == ICON_SOLID);
 
   graphics_context_set_stroke_color(ctx, color);
   graphics_context_set_fill_color(ctx, color);
@@ -222,19 +217,12 @@ void icon_draw(GContext *ctx, IconGlyph g, GPoint origin, int size, GColor color
   switch (g) {
     case ICON_CLOUD:
       // "M4.4 11.6A2.6 … A3.7 … A2.4 … Z": three bumps and a flat base.
-      if (solid) {
-        disc(ctx, b, 55, 92, 26);
-        disc(ctx, b, 84, 82, 37);
-        disc(ctx, b, 109, 93, 24);
-        graphics_fill_rect(ctx,
-                           GRect(gx(b, 44), gy(b, 85), len(b, 72), len(b, 31)),
-                           0, GCornerNone);
-      } else {
-        arc(ctx, b, 55, 92, 26, 205, 349);
-        arc(ctx, b, 84, 82, 37, 294, 432);
-        arc(ctx, b, 109, 93, 24, 24, 164);
-        ln(ctx, b, 44, 116, 116, 116);
-      }
+      disc(ctx, b, 55, 92, 26);
+      disc(ctx, b, 84, 82, 37);
+      disc(ctx, b, 109, 93, 24);
+      graphics_fill_rect(ctx,
+                         GRect(gx(b, 44), gy(b, 85), len(b, 72), len(b, 31)),
+                         0, GCornerNone);
       break;
 
     case ICON_WIND:
@@ -253,22 +241,15 @@ void icon_draw(GContext *ctx, IconGlyph g, GPoint origin, int size, GColor color
       // MEASURED on basalt: the pupil radius must NOT be taken straight from the
       // grid. At 14 px the half-height of the lens rounds to 2 px and a pupil of
       // 1.9 cells rounds to 2 px as well — the pupil eats the whole lens and the
-      // filled eye is left as two corners reading like "+ +". The pupil radius is
-      // therefore derived FROM the actual lens half-height, not from the grid.
+      // eye is left as two corners reading like "+ +". The pupil radius is
+      // therefore derived FROM the actual lens half-height.
       int half = len(b, 94) - len(b, 67);
       int pr = len(b, 19);
       if (pr > half - 1) pr = half - 1;
       if (pr < 1) pr = 1;
-      GPoint c = GPoint(gx(b, 80), gy(b, 80));
-      if (solid) {
-        fill_lens(ctx, b, 80, 80, 94, 67);
-        graphics_context_set_fill_color(ctx, GColorBlack);
-        graphics_fill_circle(ctx, c, pr);
-      } else {
-        arc(ctx, b, 80, 147, 94, 316, 405);
-        arc(ctx, b, 80, 13, 94, 135, 225);
-        graphics_draw_circle(ctx, c, pr);
-      }
+      fill_lens(ctx, b, 80, 80, 94, 67);
+      graphics_context_set_fill_color(ctx, GColorBlack);
+      graphics_fill_circle(ctx, GPoint(gx(b, 80), gy(b, 80)), pr);
       break;
     }
 
@@ -289,32 +270,20 @@ void icon_draw(GContext *ctx, IconGlyph g, GPoint origin, int size, GColor color
     // rays would be invisible; a difference in composition reads instantly.
     case ICON_GOLD:
       ln(ctx, b, 15, 132, 145, 132);
-      if (solid) disc(ctx, b, 80, 76, 42); else arc(ctx, b, 80, 76, 42, 0, 360);
+      disc(ctx, b, 80, 76, 42);
       break;
 
     case ICON_BLUE:
       ln(ctx, b, 15, 34, 145, 34);
-      if (solid) disc(ctx, b, 80, 90, 42); else arc(ctx, b, 80, 90, 42, 0, 360);
+      disc(ctx, b, 80, 90, 42);
       break;
 
     case ICON_MOONRISE:
     case ICON_MOONSET:
       // Crescent: circle (5.3, 8) r 4.2 minus circle (9.6, 8) r 5.0.
-      if (solid) {
-        fill_lune(ctx, b, 53, 80, 42, 96, 80, 50);
-      } else {
-        arc(ctx, b, 53, 80, 42, 162, 378);
-        arc(ctx, b, 96, 80, 50, 217, 323);
-      }
+      fill_lune(ctx, b, 53, 80, 42, 96, 80, 50);
       if (g == ICON_MOONRISE) arrow_up(ctx, b, 120, 44, 126, 21);
       else                    arrow_down(ctx, b, 120, 126, 44, 21);
-      break;
-
-    case ICON_TIMER:
-      arc(ctx, b, 80, 90, 54, 0, 360);
-      ln(ctx, b, 80, 90, 80, 56);
-      ln(ctx, b, 62, 22, 98, 22);
-      ln(ctx, b, 80, 22, 80, 36);
       break;
 
     case ICON_LINK:

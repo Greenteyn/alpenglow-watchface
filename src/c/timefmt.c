@@ -15,11 +15,10 @@ void timefmt_ts_hm(char *buf, size_t buf_size, uint32_t ts_sec, bool use_24h) {
     return;
   }
 
-  // 12-hour mode: without a half-day marker "09:30" is indistinguishable from
-  // 21:30. The marker is a SINGLE letter ('a'/'p') and the leading zero is
-  // dropped so the string stays as short as the 24-hour one: the Astro screen
-  // prints times in pairs ("5:20a-6:14a" is the same 11 characters as
-  // "05:20-06:14"), and that row is already tight on space.
+  // A SINGLE letter ('a'/'p') and no leading zero, so the string stays as short
+  // as the 24-hour one: the Astro screen prints times in pairs, and
+  // "5:20a-6:14a" is the same 11 characters as "05:20-06:14" in a row that is
+  // already tight on space.
   strftime(buf, buf_size, "%I:%M", lt);
   if (buf[0] == '0') memmove(buf, buf + 1, strlen(buf));
   size_t len = strlen(buf);

@@ -4,31 +4,30 @@
 
 var Clay = require("@rebble/clay");
 var clayConfig = require("./config");
-// autoHandleEvents stays at its default (true), and it MATTERS: Clay's built-in
-// handler stores the chosen values and PRE-FILLS the settings page with them next
-// time it opens. The "settings revert" bug was never this auto channel but the
-// parsing of Clay's response by numeric keys (getSettings); that is fixed below
-// by parsing e.response BY NAME. The two channels do not conflict — Clay's and
-// our buildPacket now carry the same values.
+// autoHandleEvents stays at its default (true): Clay's built-in handler stores
+// the chosen values and PRE-FILLS the settings page with them next time it
+// opens. It does not conflict with the parsing below — both carry the same
+// values.
 var clay = new Clay(clayConfig);
 
 var SunCalc = require("suncalc");
 
 // --- Debug location override (EMULATOR ONLY) ---
 //
-// The emulator has no GPS: pypkjs reports coordinates from the host's IP, so the
-// behaviour of the watchface during a polar night or on the equator cannot be
-// checked from a desk — and those are exactly the places where the astronomy
-// breaks down (no windows at all, twilight lasting all night, a 20-minute golden
-// hour). Assigning a `{lat, lon}` object makes updateAll() skip
-// navigator.geolocation and compute everything for that point.
+// The emulator has no GPS: pypkjs reports coordinates from the host's IP, so a
+// polar night or the equator cannot be checked from a desk — and those are
+// exactly where the astronomy breaks down. Assigning a `{lat, lon}` object makes
+// updateAll() skip navigator.geolocation and compute everything for that point.
 //
 // SET IT BACK TO `null` BEFORE A RELEASE. Hard to forget: while the override is
 // active every `pebble build` prints a warning and `RELEASE=1 pebble build`
 // fails (the check lives in wscript), and pkjs logs a DEBUG line on every update.
 //
 // Ready-made points, chosen as edge cases:
-//   Moscow     { lat: 55.7558, lon:  37.6173 }  baseline, "ordinary" day
+//   London     { lat: 51.5074, lon:  -0.1278 }  baseline, "ordinary" day; at
+//                                               UTC+0 the local day matches the
+//                                               UTC one, so a time zone cannot
+//                                               be what broke
 //   Murmansk   { lat: 68.9585, lon:  33.0827 }  polar day/night: no times at all
 //   Reykjavik  { lat: 64.1466, lon: -21.9426 }  twilight nearly all night
 //   Singapore  { lat:  1.3521, lon: 103.8198 }  ~20 min golden hour, night year-round
@@ -38,16 +37,12 @@ var DEBUG_LOCATION = null;
 // --- Settings (from Clay) ---
 var settings = {
     use24Hour: true,
-    // Units for wind and visibility: 0 = metric (m/s, km), 1 = imperial (mph,
-    // miles). THE WATCH DOES THE CONVERSION — the phone always sends SI (see
-    // buildPacket); the setting is kept here only to travel to the watch
-    // alongside HourFormat.
-    weatherUnits: 0,
-    // Buzz N minutes before the next light window starts (0 = off). THE WATCH
-    // works out the moment from the times in the packet; the phone has nothing to
-    // do here.
-    notifyLeadMin: 0,
+    // Every setting below except updateIntervalMin is inert on the phone: it is
+    // stored here only so it can travel to the watch, which is where it acts.
+    weatherUnits: 0,       // 0 = metric (m/s, km), 1 = imperial (mph, miles)
+    notifyLeadMin: 0,      // buzz N minutes before a light window (0 = off)
     updateIntervalMin: 60, // weather refresh period, minutes (60/120/180)
+    tapControl: true,      // tap gestures; off, the Clock is the only screen
     astroTimeoutSec: 15,   // auto-return Astro→Clock, seconds (0 = off)
     stopwatchIdleSec: 30,  // idle exit Stopwatch→Clock, seconds (0 = off)
     stopwatchMaxMin: 30,   // safety net for a forgotten run, minutes (0 = no limit)
@@ -64,6 +59,7 @@ function loadSettings() {
                 if (typeof obj.weatherUnits === "number") settings.weatherUnits = obj.weatherUnits;
                 if (typeof obj.notifyLeadMin === "number") settings.notifyLeadMin = obj.notifyLeadMin;
                 if (typeof obj.updateIntervalMin === "number") settings.updateIntervalMin = obj.updateIntervalMin;
+                if (typeof obj.tapControl === "boolean") settings.tapControl = obj.tapControl;
                 if (typeof obj.astroTimeoutSec === "number") settings.astroTimeoutSec = obj.astroTimeoutSec;
                 if (typeof obj.stopwatchIdleSec === "number") settings.stopwatchIdleSec = obj.stopwatchIdleSec;
                 if (typeof obj.stopwatchMaxMin === "number") settings.stopwatchMaxMin = obj.stopwatchMaxMin;
@@ -102,9 +98,8 @@ function moonPhaseIndex(phase) {
 // --- Weather (Open-Meteo, no API key) with throttling and a cache ---
 
 // The key name carries the cache format VERSION, like the persist keys on the
-// watch. The first version stored cloud cover alone and counted as fresh by age,
-// so after an upgrade wind and visibility would not appear until UpdateInterval
-// expired (up to 3 hours): a fresh cache cancels the network round trip.
+// watch: a fresh cache cancels the network round trip, so a cache written by an
+// older format would starve the new fields for up to UpdateInterval.
 var WEATHER_CACHE_KEY = "weatherCacheV2";
 
 try {
@@ -114,16 +109,13 @@ try {
 }
 
 // A weather snapshot: three figures, each independently nullable ("no data").
-// A missing value must reach the watch as -1 rather than 0 — zero is a valid
-// "clear sky / no wind / zero visibility".
+// A missing value must reach the watch as -1 rather than 0 (see packet.h).
 function emptyWeather() {
     return { cloud: null, wind: null, visibility: null };
 }
 
-// A number from JSON, or null. It is a function of its own because there are two
-// sources — the network and the cache — and an older cache (from before wind and
-// visibility) has no such fields at all: they arrive undefined and must become
-// null rather than NaN.
+// A number from JSON, or null: an absent field must become null rather than NaN,
+// and both the network and the cache can leave one out.
 function numOrNull(v) {
     return (typeof v === "number" && isFinite(v)) ? v : null;
 }
@@ -161,32 +153,31 @@ function saveWeatherCache(wx) {
     }
 }
 
-// Return cached weather if it is younger than updateInterval, otherwise null.
-function freshCachedWeather() {
-    // The cache is not tied to coordinates: when DEBUG_LOCATION moves you
-    // elsewhere, fresh weather for the previous point would cancel the network
-    // request and the new place would show the old clouds. In debug the cache is
-    // therefore always treated as stale.
-    if (DEBUG_LOCATION) return null;
-    var cache = loadWeatherCache();
-    if (!cache) return null;
-    var ageMin = (Date.now() - cache.ts) / 60000;
-    if (ageMin < settings.updateIntervalMin) {
-        return cache;
-    }
-    return null;
+// Is this cache entry young enough to skip the network?
+function isWeatherCacheFresh(cache) {
+    // The cache is not tied to coordinates, so under DEBUG_LOCATION it is always
+    // treated as stale: weather still fresh for the previous point would cancel
+    // the request and the new place would show the old clouds.
+    if (DEBUG_LOCATION || !cache) return false;
+    return (Date.now() - cache.ts) / 60000 < settings.updateIntervalMin;
 }
 
 // XMLHttpRequest helper (PebbleKit JS has no fetch).
 function xhrGetJson(url, onOk, onErr) {
     var xhr = new XMLHttpRequest();
     xhr.onload = function () {
+        // Only the PARSE is guarded. With onOk inside the try, an exception
+        // thrown by the callback would run onErr as well, and both paths call
+        // finish() — one request would then count as two.
+        var data;
         try {
-            onOk(JSON.parse(this.responseText));
+            data = JSON.parse(this.responseText);
         } catch (e) {
             console.log("weather json parse error: " + e);
             onErr(e);
+            return;
         }
+        onOk(data);
     };
     xhr.onerror = function (e) { onErr(e); };
     xhr.ontimeout = function (e) { onErr(e); };
@@ -196,38 +187,21 @@ function xhrGetJson(url, onOk, onErr) {
 }
 
 // VISIBILITY COMES FROM A SPECIFIC MODEL rather than from best_match like the
-// rest of the weather. The reason is not accuracy but spread: from best_match
-// this variable is unusable.
-//
-// Measured over a full day of hourly values at one location:
-//   best_match (knmi there):    200 … 53 760 m
-//   gfs_seamless:            23 840 … 24 140 m
-// The nearby airport's METAR reported `9999` — "10 km or more", i.e. clear — the
-// whole time. The 200 m of night "fog" is the model's invention: it diagnoses
-// visibility from humidity, and a surface inversion yields near-zero visibility
-// under a genuinely clear sky. At the 20 km threshold that flipped the row from
-// green to red every night.
-//
-// Same moment, same place, different models — a 57-fold spread: best_match 420 m,
-// gfs_seamless 24 140 m, ukmo_seamless 23 580 m, while ecmwf/icon/meteofrance/
-// jma/gem/kma do not carry the variable at all (visibility: null). GFS is chosen
-// as a global model (verified as far as Antarctica) with no nightly dropouts. Its
-// own ceiling is 24 140 m = exactly 15 miles; above the display threshold the
-// watch prints "20+ km" anyway.
+// rest of the weather — from best_match the variable is unusable, spreading
+// 57-fold between models at the same moment and inventing night "fog" that
+// flipped the row from green to red every night. GFS is global, carries the
+// variable everywhere and has no nightly dropouts.
 var WX_VIS_MODEL = "gfs_seamless";
 
 // Fetch a fresh weather snapshot. cb({cloud,wind,visibility}|null).
 //
-// There are TWO requests because `models=` in Open-Meteo applies to the whole
-// request: cloud cover from best_match and visibility from GFS cannot be had in
-// one. Multi-model suffixes (`visibility_gfs_seamless`) exist only in hourly — in
-// current the API silently takes the FIRST model of the list. Pulling 24 hours of
-// hourly data and locating the current hour costs more than a second request:
-// the network is touched once per UpdateInterval (30…180 min) and the cache
-// answers in between.
+// TWO requests, because `models=` in Open-Meteo applies to the WHOLE request:
+// cloud cover from best_match and visibility from GFS cannot be had in one. The
+// multi-model suffix (`visibility_gfs_seamless`) exists only in hourly — in
+// current the API silently takes the first model of the list.
 //
-// wind_speed_unit=ms: the API defaults to km/h, while m/s is what photographers
-// think in (it tells whether foliage moves and whether a tripod holds).
+// wind_speed_unit=ms: the API defaults to km/h, while m/s is what tells you
+// whether foliage moves and whether a tripod holds.
 function fetchWeatherNetwork(lat, lon, cb) {
     var base = "https://api.open-meteo.com/v1/forecast?latitude=" + lat +
         "&longitude=" + lon;
@@ -237,10 +211,10 @@ function fetchWeatherNetwork(lat, lon, cb) {
     function finish() {
         pending -= 1;
         if (pending > 0) return;
-        // A completely empty snapshot (both requests failed) is not cached: it
+        // A completely empty snapshot (both requests failed) is NOT cached: it
         // would evict the last valid values and the watch would show "--" until
-        // the next cycle. A partial one IS cached — partial data beats none, and
-        // the missing field stays null and travels to the watch as -1.
+        // the next cycle. A partial one is cached, its missing field staying
+        // null and travelling to the watch as -1.
         if (wx.cloud === null && wx.wind === null && wx.visibility === null) {
             cb(null);
             return;
@@ -293,11 +267,11 @@ function sunTimesForLocalDay(base, dayOffset, lat, lon) {
     return SunCalc.getTimes(noon, lat, lon);
 }
 
-// Moon events are scanned rather than taken from SunCalc.getMoonTimes: sampling
+// Moon events are SCANNED rather than taken from SunCalc.getMoonTimes: sampling
 // altitude every two hours, that function drops events, sometimes returns one
 // belonging to the next day, and raises alwaysUp on days when the moon does both
-// rise and set. A missing event is legitimate (near the poles, and once a month
-// anywhere), so none of it can be caught downstream.
+// rise and set. None of it can be caught downstream, because a missing event is
+// legitimate — near the poles, and once a month anywhere.
 var MOON_HC_DEG = 0.133;                   // horizon in DEGREES: SunCalc 2.x
                                            // reports altitude in degrees
 var MOON_SCAN_STEP_MS = 10 * 60 * 1000;
@@ -362,11 +336,9 @@ function lightWindowsOf(times) {
     ];
 }
 
-// The nearest UPCOMING window, not "morning before noon, evening after". The old
-// rule showed light that had already passed: at night yesterday's evening, and
-// late in the evening today's, when the next light is tomorrow morning. What a
-// photographer needs is when the light WILL be, so today and tomorrow are scanned
-// and the first window that has not ended yet is taken.
+// The nearest UPCOMING window, not "morning before noon, evening after": the
+// latter shows light that has already passed. Today and tomorrow are scanned and
+// the first window that has not ended yet is taken.
 function pickLightWindow(lat, lon, now) {
     for (var off = 0; off <= 1; off++) {
         var wins = lightWindowsOf(sunTimesForLocalDay(now, off, lat, lon));
@@ -407,15 +379,8 @@ function buildPacket(sun, moonTimes, moonIllum, win, wx) {
         MoonSet: toTs(moonTimes.set),
         MoonPhase: moonPhaseIndex(moonIllum.phase),
         MoonIllum: Math.round(moonIllum.fraction * 100),
-        // -1 = "no data" (the watch draws "--"). Sending 0 is not an option: on
-        // screen it reads as clear sky, no wind, zero visibility — meaningful and
-        // false at the same time.
+        // -1 = "no data", always SI — see packet.h for both.
         WxCloud: (wx.cloud === null ? -1 : wx.cloud),            // %
-        // ALWAYS SI, whatever units are selected: converting to mph and miles is
-        // display formatting and the watch does it (as with 12/24-hour time).
-        // Otherwise changing units would require a new packet from the phone, and
-        // the weather cache would hold values in whichever units were current at
-        // fetch time.
         WxWind: (wx.wind === null ? -1 : wx.wind),               // m/s
         WxVisibility: (wx.visibility === null ? -1 : wx.visibility), // metres
         DataTs: Math.floor(Date.now() / 1000),
@@ -423,6 +388,7 @@ function buildPacket(sun, moonTimes, moonIllum, win, wx) {
         HourFormat: settings.use24Hour ? 1 : 0,
         WeatherUnits: settings.weatherUnits,
         NotifyLeadTime: settings.notifyLeadMin,
+        TapControl: settings.tapControl ? 1 : 0,
         AstroTimeout: settings.astroTimeoutSec,
         StopwatchIdleTimeout: settings.stopwatchIdleSec,
         StopwatchMaxDuration: settings.stopwatchMaxMin,
@@ -451,12 +417,14 @@ function buildAndSend(lat, lon) {
     var moonIllum = SunCalc.getMoonIllumination(now);
     var win = pickLightWindow(lat, lon, now);
 
-    // 1) Immediately: astronomy plus whatever the cache holds (may be null).
+    // 1) Immediately: astronomy plus whatever the cache holds (may be null, and
+    // may be older than the packet's own DataTs implies — the astronomy in it is
+    // fresh either way, and that is what the screen is mostly made of).
     var cached = loadWeatherCache();
     sendPacket(buildPacket(sun, moonTimes, moonIllum, win, cached), "astro");
 
     // 2) If the weather cache is stale, fetch fresh data and send again.
-    if (freshCachedWeather() === null) {
+    if (!isWeatherCacheFresh(cached)) {
         fetchWeatherNetwork(lat, lon, function (wx) {
             if (wx === null) return;
             sendPacket(buildPacket(sun, moonTimes, moonIllum, win, wx), "weather");
@@ -471,7 +439,7 @@ function buildAndSend(lat, lon) {
 
 // Periodic weather polling. The timer id is kept so it can be re-armed when
 // UpdateInterval changes; otherwise a new period would only take effect after
-// pkjs restarts. The cost is one variable on the phone and nothing on the watch.
+// pkjs restarts.
 var updateTimer = null;
 function rearmUpdateTimer() {
     if (updateTimer) clearInterval(updateTimer);
@@ -523,16 +491,12 @@ Pebble.addEventListener("appmessage", function (e) {
 
 // Settings from Clay.
 //
-// IMPORTANT — this was the root cause of "the timeout is never applied":
-// clay.getSettings(e.response) returns a dict keyed by NUMERIC messageKey IDs
-// (10015/10016/…), not by names. dict.HourFormat and dict.AstroTimeout were
-// therefore always undefined, every branch was skipped, the settings stayed at
-// their defaults and the watch kept receiving them.
-//
-// The raw e.response, by contrast, is an object WITH NAMES and a .value field:
+// DO NOT REACH FOR clay.getSettings(e.response) HERE: it returns a dict keyed by
+// NUMERIC messageKey IDs (10015/10016/…), so dict.HourFormat and the rest come
+// out undefined, every branch is skipped and the settings silently stay at their
+// defaults. The raw e.response is an object WITH NAMES and a .value field:
 //   {"HourFormat":{"value":true},"AstroTimeout":{"value":"60"}, ...}
-// That is what is parsed here, by key name — reliable and independent of Clay's
-// internal numbering.
+// That is what is parsed below, by key name.
 function pickValue(node) {
     // node may be {value: X} (Clay's shape) or X itself — take X.
     return (node && typeof node === "object" && "value" in node) ? node.value : node;
@@ -565,6 +529,9 @@ Pebble.addEventListener("webviewclosed", function (e) {
         var mins = parseInt(pickValue(dict.UpdateInterval), 10);
         if (!isNaN(mins)) settings.updateIntervalMin = mins;
     }
+    if (dict.TapControl !== undefined) {
+        settings.tapControl = !!pickValue(dict.TapControl);
+    }
     if (dict.AstroTimeout !== undefined) {
         var secs = parseInt(pickValue(dict.AstroTimeout), 10);
         if (!isNaN(secs)) settings.astroTimeoutSec = secs;
@@ -585,6 +552,7 @@ Pebble.addEventListener("webviewclosed", function (e) {
         " units=" + settings.weatherUnits +
         " notifyLead=" + settings.notifyLeadMin +
         " interval=" + settings.updateIntervalMin +
+        " tapControl=" + settings.tapControl +
         " astroTimeout=" + settings.astroTimeoutSec +
         " swIdle=" + settings.stopwatchIdleSec +
         " swMax=" + settings.stopwatchMaxMin +

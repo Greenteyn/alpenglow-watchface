@@ -1,10 +1,8 @@
 // geom.h — integer geometry shared by the screen layout and the icon pack.
 //
-// Split out of main.c once a second caller appeared: the moon terminator in
-// icons.c is filled row by row and needs the disc half-width for every row.
-// A second copy of isqrt32 is not an option — its exit condition is subtle
-// (see the warning at its definition) and "optimising" one copy would bring
-// the hang back.
+// Keep it shared: a second copy of isqrt32 is not an option, since its exit
+// condition is subtle (see the warning at its definition) and "optimising" one
+// copy brings back a hang that takes down the app.
 
 #pragma once
 #include <pebble.h>

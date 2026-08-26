@@ -31,15 +31,12 @@ static void push_arc(RingArc *arcs, int *n, int max_arcs,
   arcs[*n].from_deg = from;
   arcs[*n].to_deg = to;
   arcs[*n].kind = kind;
-  arcs[*n].valid = true;
   (*n)++;
 }
 
-// A full day, not a single window. The ring used to draw daytime plus the ONE
-// golden/blue pair that arrived as "the nearest window". Once that field became
-// "the nearest UPCOMING window" the pair could belong to tomorrow, and a ring
-// of the day built from it stopped making sense. Today's boundaries now come
-// from their own fields, and the Astro window lives its own life.
+// A full day, not a single window: the ring always draws the current day, while
+// the golden/blue pair on the Astro screen is the nearest UPCOMING window and
+// may belong to tomorrow. The two come from separate packet fields.
 //
 // Call order is drawing order: wide backdrop arcs first, narrow ones on top.
 // Otherwise daytime paints over the golden hour at its edges.

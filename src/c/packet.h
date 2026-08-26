@@ -25,6 +25,11 @@ typedef struct {
   uint8_t  moon_illum;   // 0..100 %
   // Weather. -1 means "no data" for EVERY field: zero is a meaningful reading
   // here (clear sky, no wind, zero visibility) and cannot double as absence.
+  //
+  // ALWAYS SI, whatever units are selected. Imperial is display formatting and
+  // the watch applies it at draw time, exactly as it does 12-hour time — so
+  // flipping the switch shows at once, without a new packet, and the weather
+  // cache on the phone never holds values in a unit that has since changed.
   int8_t   wx_cloud;     // 0..100 %
   int8_t   wx_wind_ms;   // m/s; the phone clips at 120, so int8 is enough
   // Visibility is in METRES and therefore 32-bit: Open-Meteo reported 53 180 m

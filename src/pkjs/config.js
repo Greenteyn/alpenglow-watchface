@@ -97,6 +97,21 @@ module.exports = [
                 defaultValue: "Navigation",
             },
             {
+                type: "toggle",
+                messageKey: "TapControl",
+                label: "Tap to switch screens",
+                description:
+                    "A tap on the case is the only gesture: it cycles Clock → " +
+                    "Astro → Stopwatch and runs the stopwatch itself. Listening " +
+                    "for it keeps the accelerometer running all the time; " +
+                    "switching taps off shuts the sensor down and, depending on " +
+                    "how you wear the watch, can stretch a charge up to about " +
+                    "twice as far. The Clock then becomes the only screen and " +
+                    "the settings below stop doing anything. The light window " +
+                    "alert keeps working either way.",
+                defaultValue: true,
+            },
+            {
                 type: "select",
                 messageKey: "AstroTimeout",
                 label: "Return from the Astro screen",
