@@ -1,7 +1,7 @@
 {
   "name": "alpenglow-watchface",
   "author": "greenteyn",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "keywords": [
     "pebble-app"
   ],
@@ -61,7 +61,8 @@
       "StopwatchMaxDuration",
       "ShowStopwatch",
       "Refresh",
-      "TapControl"
+      "TapControl",
+      "RingOrientation"
     ],
     "resources": {
       "media": []

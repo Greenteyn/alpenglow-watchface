@@ -14,8 +14,13 @@ A Pebble watchface for landscape and night photography: it tells you when the li
 
 One gesture drives everything — a tap on the case cycles the screens.
 
+<p>
+  <img src="screenshots/screens.gif" width="200" alt="A tap cycles Clock, Astro and Stopwatch">
+</p>
+
 **Clock** — the time inside a ring of the day. The ring maps 24 hours onto the circle
-(midnight at the top) and colours every phase by the brightness of the sky: astronomical
+(midnight at the top, or at the bottom if you prefer daylight in the upper half — the
+settings decide) and colours every phase by the brightness of the sky: astronomical
 night, twilight, blue hour, daytime, golden hour. A pip inside the ring marks the start of
 the next light window. Below the time: cloud cover, wind and visibility, coloured by how
 much they help or hinder a shot.
@@ -36,7 +41,16 @@ watch is worn, that can stretch a charge up to about twice as far. The light win
 works either way.
 
 <details>
-<summary>The same screens on a black-and-white and on a round display</summary>
+<summary>The ring turned over, and the same screens on a black-and-white and on a round display</summary>
+
+<p>
+  <img src="screenshots/clock.png" width="200" alt="Ring with midnight at the top">
+  <img src="screenshots/clock-flipped.png" width="200" alt="Ring with midnight at the bottom">
+</p>
+
+The same minute, drawn both ways. Midnight sits at the top by default; turned over,
+daylight fills the upper half and the sun tracks the way it does in the sky — up the left
+side, over the top at noon, down the right.
 
 <p>
   <img src="screenshots/diorite-clock.png" width="200" alt="Clock on a 1-bit display">

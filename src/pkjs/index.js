@@ -4,11 +4,12 @@
 
 var Clay = require("@rebble/clay");
 var clayConfig = require("./config");
+var customClay = require("./custom-clay");
 // autoHandleEvents stays at its default (true): Clay's built-in handler stores
 // the chosen values and PRE-FILLS the settings page with them next time it
 // opens. It does not conflict with the parsing below — both carry the same
 // values.
-var clay = new Clay(clayConfig);
+var clay = new Clay(clayConfig, customClay);
 
 var SunCalc = require("suncalc");
 
@@ -46,7 +47,8 @@ var settings = {
     astroTimeoutSec: 15,   // auto-return Astro→Clock, seconds (0 = off)
     stopwatchIdleSec: 30,  // idle exit Stopwatch→Clock, seconds (0 = off)
     stopwatchMaxMin: 30,   // safety net for a forgotten run, minutes (0 = no limit)
-    showStopwatch: true    // keep the stopwatch screen in the tap cycle
+    showStopwatch: true,   // keep the stopwatch screen in the tap cycle
+    ringOrientation: 0     // day ring: 0 = midnight at the top, 1 = at the bottom
 };
 
 function loadSettings() {
@@ -64,6 +66,7 @@ function loadSettings() {
                 if (typeof obj.stopwatchIdleSec === "number") settings.stopwatchIdleSec = obj.stopwatchIdleSec;
                 if (typeof obj.stopwatchMaxMin === "number") settings.stopwatchMaxMin = obj.stopwatchMaxMin;
                 if (typeof obj.showStopwatch === "boolean") settings.showStopwatch = obj.showStopwatch;
+                if (typeof obj.ringOrientation === "number") settings.ringOrientation = obj.ringOrientation;
             }
         }
     } catch (e) {
@@ -392,7 +395,8 @@ function buildPacket(sun, moonTimes, moonIllum, win, wx) {
         AstroTimeout: settings.astroTimeoutSec,
         StopwatchIdleTimeout: settings.stopwatchIdleSec,
         StopwatchMaxDuration: settings.stopwatchMaxMin,
-        ShowStopwatch: settings.showStopwatch ? 1 : 0
+        ShowStopwatch: settings.showStopwatch ? 1 : 0,
+        RingOrientation: settings.ringOrientation
     };
 }
 
@@ -547,6 +551,10 @@ Pebble.addEventListener("webviewclosed", function (e) {
     if (dict.ShowStopwatch !== undefined) {
         settings.showStopwatch = !!pickValue(dict.ShowStopwatch);
     }
+    if (dict.RingOrientation !== undefined) {
+        var ring = parseInt(pickValue(dict.RingOrientation), 10);
+        if (!isNaN(ring)) settings.ringOrientation = ring;
+    }
     saveSettings();
     console.log("settings updated: use24Hour=" + settings.use24Hour +
         " units=" + settings.weatherUnits +
@@ -556,7 +564,8 @@ Pebble.addEventListener("webviewclosed", function (e) {
         " astroTimeout=" + settings.astroTimeoutSec +
         " swIdle=" + settings.stopwatchIdleSec +
         " swMax=" + settings.stopwatchMaxMin +
-        " showStopwatch=" + settings.showStopwatch);
+        " showStopwatch=" + settings.showStopwatch +
+        " ringOrientation=" + settings.ringOrientation);
 
     updateAll();
     // Apply the new polling period at once, without waiting for a pkjs restart.

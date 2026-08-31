@@ -4,6 +4,9 @@
 // NOTE: select fields carry STRING values ("60"/"15"/"0"). pkjs converts them
 // with parseInt before sending, and settings.c on the watch is tolerant of
 // strings as well (tuple_to_int).
+//
+// Descriptions here stay short on purpose: custom-clay.js fades an item out
+// when the switch above it makes it inert, and faded text is barely readable.
 module.exports = [
     {
         type: "heading",
@@ -25,6 +28,22 @@ module.exports = [
                 messageKey: "HourFormat",
                 label: "24-hour format",
                 defaultValue: true,
+            },
+            {
+                type: "select",
+                messageKey: "RingOrientation",
+                label: "Ring orientation",
+                description:
+                    "Which way round the day sits on the ring of the Clock " +
+                    "screen. With midnight at the bottom daylight fills the " +
+                    "upper half and the sun tracks the way it does in the " +
+                    "sky: up the left side, over the top at noon, down the " +
+                    "right.",
+                defaultValue: "0",
+                options: [
+                    { label: "Midnight at the top", value: "0" },
+                    { label: "Midnight at the bottom", value: "1" },
+                ],
             },
         ],
     },
@@ -101,13 +120,11 @@ module.exports = [
                 messageKey: "TapControl",
                 label: "Tap to switch screens",
                 description:
-                    "A tap on the case is the only gesture: it cycles Clock → " +
-                    "Astro → Stopwatch and runs the stopwatch itself. Listening " +
-                    "for it keeps the accelerometer running all the time; " +
-                    "switching taps off shuts the sensor down and, depending on " +
-                    "how you wear the watch, can stretch a charge up to about " +
-                    "twice as far. The Clock then becomes the only screen and " +
-                    "the settings below stop doing anything. The light window " +
+                    "A tap on the case cycles Clock → Astro → Stopwatch and " +
+                    "runs the stopwatch. Listening for it keeps the " +
+                    "accelerometer on: switching taps off shuts the sensor " +
+                    "down, can stretch a charge up to about twice as far, and " +
+                    "leaves the Clock as the only screen. The light window " +
                     "alert keeps working either way.",
                 defaultValue: true,
             },
@@ -129,10 +146,9 @@ module.exports = [
                 messageKey: "ShowStopwatch",
                 label: "Stopwatch screen",
                 description:
-                    "Turning it off removes the screen from the cycle entirely: a " +
-                    "tap on Astro returns to the Clock. A running measurement is " +
-                    "stopped and reset. The two settings below belong to this " +
-                    "screen and do nothing without it.",
+                    "Off, the screen drops out of the cycle: a tap on Astro " +
+                    "returns to the Clock, and a running measurement is " +
+                    "stopped and reset.",
                 defaultValue: true,
             },
             {
@@ -152,9 +168,8 @@ module.exports = [
                 messageKey: "StopwatchMaxDuration",
                 label: "Maximum measurement length",
                 description:
-                    "A stopwatch left running keeps ticking in the background and " +
-                    "drains the battery. At the limit the measurement stops by " +
-                    "itself, with a buzz.",
+                    "A forgotten measurement keeps ticking and drains the " +
+                    "battery, so at the limit it stops by itself, with a buzz.",
                 defaultValue: "30",
                 options: [
                     { label: "No limit", value: "0" },

@@ -22,6 +22,11 @@ typedef struct {
   // ShowStopwatch: whether the stopwatch screen stays in the tap cycle. Off, the
   // third screen goes entirely (Clock↔Astro) rather than losing its readout.
   bool show_stopwatch;
+  // RingOrientation: where midnight sits on the day ring — 0 = top (the
+  // default), 1 = bottom, which lifts daylight into the upper half. Held as an
+  // integer rather than a flag because that is what the Clay select sends and
+  // what RingOrientation in ring.h enumerates.
+  uint16_t ring_orientation;
 } Settings;
 
 // NOTE: ANY change to this struct layout must bump SETTINGS_PERSIST_KEY in
