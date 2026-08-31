@@ -270,9 +270,10 @@ static void draw_window_pip(GContext *ctx, int cx, int cy, int outer_r) {
 
 // --- Day-scale ticks: 00 / 06 / 12 / 18 ---
 //
-// The circle is a DAY, not 12 hours: 0° at the top = midnight, 180° = noon. The
-// marker therefore travels at half the speed of an hour hand, and without
-// reference points the scale reads as "the hand is lying".
+// The circle is a DAY, not 12 hours: midnight and noon sit opposite each other
+// and a quarter turn is six hours. The marker therefore travels at half the
+// speed of an hour hand, and without reference points the scale reads as "the
+// hand is lying".
 //
 // The ticks live INSIDE the ring, in the gap before the window-marker band,
 // rather than on top of the arcs. Midnight always falls on the darkest phase, so
@@ -329,8 +330,15 @@ static void draw_ring(GContext *ctx, int cx, int cy, int outer_r,
       // twilight are a 3 px strip), so the twilight dashes would show through
       // underneath. Clear the sector first with a solid fill, leaving no gaps at
       // any radius.
-      RingStyle erase = { GColorBlack, 0, RING_THICKNESS, 0 };
-      draw_ring_span(ctx, cx, cy, outer_r, &erase,
+      //
+      // WIDER FOR ASTRONOMICAL NIGHT ONLY. A twilight dash overshoots the
+      // outer edge — it is a stroke of width 2 along the radius — and this fill
+      // stops there. The leftover fringe is white on white under every other
+      // phase, and on the 3 px daytime strip it even covers pixels the arc's own
+      // fill misses; night draws nothing, so only there does it show.
+      int over = (arcs[i].kind == RING_ARC_ASTRO_NIGHT) ? 2 : 0;
+      RingStyle erase = { GColorBlack, 0, RING_THICKNESS + over, 0 };
+      draw_ring_span(ctx, cx, cy, outer_r + over, &erase,
                      arcs[i].from_deg, arcs[i].to_deg);
 #endif
       draw_ring_span(ctx, cx, cy, outer_r, &st, arcs[i].from_deg, arcs[i].to_deg);
@@ -414,7 +422,10 @@ static void draw_icon_text(GContext *ctx, IconGlyph g, const char *s, GFont font
 // (#555555) turns BLACK, so "no data" would be invisible against the background;
 // both greys therefore fall back to white in monochrome, where the "--" dashes
 // carry the absence instead.
-#define WX_GOOD PBL_IF_COLOR_ELSE(GColorGreen, GColorWhite)
+//
+// Spring green, not plain GColorGreen: the display pushes the top of the palette
+// towards white, leaving pure green dimmer than the grey it should outrank.
+#define WX_GOOD PBL_IF_COLOR_ELSE(GColorMediumSpringGreen, GColorWhite)
 #define WX_FAIR PBL_IF_COLOR_ELSE(GColorYellow, GColorWhite)
 #define WX_POOR PBL_IF_COLOR_ELSE(GColorLightGray, GColorWhite)
 #define WX_NONE PBL_IF_COLOR_ELSE(GColorDarkGray, GColorWhite)
@@ -855,6 +866,32 @@ static const uint8_t ASTRO_PAIR_ROWS[] = {
 // below that adjacent rows start to touch, and there is no smaller step.
 #define ASTRO_MIN_STEP 14
 
+// Font steps, largest first, each with the row pitch it needs: below that the
+// ascenders of one row run into the descenders of the one above.
+//
+// BOLD throughout and free — same line height as the regular twin, so no row
+// moves, while white-on-black hairlines bleed into the background at arm's length.
+typedef struct { uint8_t pitch, size; const char *key; } AstroFontStep;
+static const AstroFontStep ASTRO_FONT_LADDER[] = {
+  { 26, 24, FONT_KEY_GOTHIC_24_BOLD },
+  { 20, 18, FONT_KEY_GOTHIC_18_BOLD },
+  { ASTRO_MIN_STEP, 14, FONT_KEY_GOTHIC_14_BOLD },
+};
+#define ASTRO_FONT_LADDER_N (sizeof(ASTRO_FONT_LADDER) / sizeof(ASTRO_FONT_LADDER[0]))
+
+// The step a row pitch buys; the last is the floor, nothing exists below it.
+static unsigned astro_font_step(int line_h) {
+  unsigned k = 0;
+  while (k + 1 < ASTRO_FONT_LADDER_N && line_h < ASTRO_FONT_LADDER[k].pitch) k++;
+  return k;
+}
+
+// Every label of a "label + value" row: the column is as wide as the widest of
+// them MEASURED in the font in use. Which of the four that is depends on the
+// face, and a fraction of the point size errs by more than the column's slack.
+static const char *const ASTRO_LABELS[] = { "Rise", "Set", "Gold", "Blue" };
+#define ASTRO_LABELS_N (sizeof(ASTRO_LABELS) / sizeof(ASTRO_LABELS[0]))
+
 // The order in which rows are dropped on cramped canvases. The divider goes
 // first (decoration; the headers already separate the blocks), then the sun's
 // Set and Rise, whose times all but coincide with the window boundaries.
@@ -869,16 +906,25 @@ static const uint8_t ASTRO_DROP_ORDER[] = {
 
 typedef struct {
   GFont font;
-  int fs;      // point size; the label column is derived from it
+  int fs;      // point size; the row icons are drawn at it
   int line_h;
   int top;
+  int label_w; // shared width of the label column, its icon included
   int x_pairs; // shared left edge of the "label + value" rows
   int rows;    // how many rows are actually shown
   int slot[ASTRO_ROWS]; // row position top to bottom, −1 = hidden
+  int gap;      // air before the moon block where the divider was dropped
+  int gap_from; // first slot the gap applies to
 } AstroMetrics;
 
 // Geometry of ONE row: every row has its own.
 typedef struct { int y, x, w, label_w; } AstroRow;
+
+// Top of row i. Everything that positions a row goes through here, or the gap
+// would move the text without moving the chord it is measured against.
+static int astro_row_y(const AstroMetrics *m, int i) {
+  return m->top + m->line_h * i + (i >= m->gap_from ? m->gap : 0);
+}
 
 // Half-width of row i from the CHORD at ITS OWN height. One width shared by the
 // whole block would be dictated by its narrowest row, and on round displays
@@ -890,7 +936,7 @@ static int astro_row_half(GRect bounds, const AstroMetrics *m, int i) {
   // Radius from the very edge of the canvas (−2): there is no ring on this
   // screen, so the text fits into the mask rather than into an inner circle.
   int radius = ((w < bh) ? w : bh) / 2 - 2;
-  int y = m->top + m->line_h * i;
+  int y = astro_row_y(m, i);
   int half = chord_half_at(w / 2, bh / 2, radius, y, m->line_h) - 3;
   int lim = (w - 8) / 2;
   if (half > lim) half = lim;
@@ -919,16 +965,49 @@ static AstroMetrics astro_metrics(GRect bounds) {
     hidden[ASTRO_DROP_ORDER[k]] = true;
     m.rows--;
   }
+  // A SECOND reason to give up the divider: the rows all fit, yet the pitch lands
+  // short of the next font step and the freed row carries the screen over it — on
+  // 200×228 nine rows give 24 and the 18 px step, eight give 27 and the 24 px one.
+  // Offered for the DIVIDER alone: a row carrying a time outweighs a size step.
+  if (!hidden[ASTRO_DIVIDER] &&
+      astro_font_step(h_eff / (m.rows - 1)) < astro_font_step(h_eff / m.rows)) {
+    hidden[ASTRO_DIVIDER] = true;
+    m.rows--;
+  }
   int slot = 0;
   for (int i = 0; i < ASTRO_ROWS; i++) m.slot[i] = hidden[i] ? -1 : slot++;
 
   m.line_h = h_eff / m.rows;
   // The font is chosen TO FIT the row pitch, otherwise glyphs collide.
-  if (m.line_h >= 26)      { m.font = fonts_get_system_font(FONT_KEY_GOTHIC_24); m.fs = 24; }
-  else if (m.line_h >= 20) { m.font = fonts_get_system_font(FONT_KEY_GOTHIC_18); m.fs = 18; }
-  else                     { m.font = fonts_get_system_font(FONT_KEY_GOTHIC_14); m.fs = 14; }
+  const AstroFontStep *step = &ASTRO_FONT_LADDER[astro_font_step(m.line_h)];
+  m.font = fonts_get_system_font(step->key);
+  m.fs = step->size;
 
-  m.top = (bounds.size.h - m.line_h * m.rows) / 2; // block centred on screen
+  m.label_w = 0;
+  for (unsigned k = 0; k < ASTRO_LABELS_N; k++) {
+    int t = text_width(ASTRO_LABELS[k], m.font);
+    if (t > m.label_w) m.label_w = t;
+  }
+  // The icon shares the column, or values would shift row to row by its width.
+  // The trailing third of a point size is air the measurement leaves out: sized
+  // to the glyph, "Gold" would touch "6:35p".
+  m.label_w += ICON_ADVANCE(m.fs) + m.fs / 3;
+
+  // A dropped divider leaves the sun and moon blocks touching, and the larger
+  // font the drop pays for makes that seam more obvious, not less. Give the moon
+  // header a quarter row of air out of the margin the centring holds back: a
+  // whole row would cost the font step the drop has just bought, and the margin
+  // is the only slack on the canvas — the pitch itself is spent on the font.
+  m.gap_from = (m.slot[ASTRO_MOON_HDR] > 0) ? m.slot[ASTRO_MOON_HDR] : m.rows;
+  m.gap = 0;
+  if (hidden[ASTRO_DIVIDER] && m.slot[ASTRO_MOON_HDR] > 0) {
+    int slack = bounds.size.h - m.line_h * m.rows - 4; // 2 px top and bottom
+    m.gap = m.line_h / 4;
+    if (m.gap > slack) m.gap = slack;
+    if (m.gap < 0) m.gap = 0;
+  }
+
+  m.top = (bounds.size.h - m.line_h * m.rows - m.gap) / 2; // block centred
   if (m.top < 2) m.top = 2;
 
   // The SHARED left edge of the labelled rows comes from the narrowest of them,
@@ -951,17 +1030,14 @@ static AstroMetrics astro_metrics(GRect bounds) {
 // A "label + value" row: shared left edge, right edge from its own chord.
 static AstroRow astro_row(GRect bounds, const AstroMetrics *m, int i) {
   AstroRow r;
-  r.y = m->top + m->line_h * i;
+  r.y = astro_row_y(m, i);
   r.x = m->x_pairs;
   r.w = bounds.size.w / 2 + astro_row_half(bounds, m, i) - r.x;
   if (r.w < 40) r.w = 40;
-  // The label column is sized by the widest REAL label ("Rise"), not by a
-  // fraction of the row width — slack next to a clipped value is not acceptable.
-  // The icon belongs to the same column, or the values would shift between rows
-  // by its width.
-  int lw = (m->fs * 23) / 10 + ICON_ADVANCE(m->fs);
+  // Capped at half the row: on the narrowest rows of a round display the labels
+  // would otherwise leave the value less room than themselves.
   int half_w = r.w / 2;
-  r.label_w = (lw < half_w) ? lw : half_w;
+  r.label_w = (m->label_w < half_w) ? m->label_w : half_w;
   return r;
 }
 
@@ -970,7 +1046,7 @@ static AstroRow astro_row(GRect bounds, const AstroMetrics *m, int i) {
 // row has to stay where it is (see astro_metrics).
 static AstroRow astro_row_wide(GRect bounds, const AstroMetrics *m, int i) {
   AstroRow r;
-  r.y = m->top + m->line_h * i;
+  r.y = astro_row_y(m, i);
   int half = astro_row_half(bounds, m, i);
   int own_x = bounds.size.w / 2 - half;
   r.x = (own_x > m->x_pairs) ? own_x : m->x_pairs;
@@ -1117,10 +1193,13 @@ static const TimeStep SW_LADDER[] = {
 };
 #define SW_LADDER_N (sizeof(SW_LADDER) / sizeof(SW_LADDER[0]))
 
+// The supporting rows are BOLD and stay grey: this screen is read repeatedly
+// through a long exposure in the dark, where white would cost dark adaptation and
+// leave the readout no longer the brightest thing in the frame.
 static const TimeStep SW_LABEL_LADDER[] = {
-  { 24, FONT_KEY_GOTHIC_24 },
-  { 18, FONT_KEY_GOTHIC_18 },
-  { 14, FONT_KEY_GOTHIC_14 },
+  { 24, FONT_KEY_GOTHIC_24_BOLD },
+  { 18, FONT_KEY_GOTHIC_18_BOLD },
+  { 14, FONT_KEY_GOTHIC_14_BOLD },
 };
 #define SW_LABEL_LADDER_N (sizeof(SW_LABEL_LADDER) / sizeof(SW_LABEL_LADDER[0]))
 
@@ -1211,8 +1290,8 @@ static void draw_stopwatch(GContext *ctx, GRect bounds, const struct tm *now_tm)
   }
   graphics_context_set_text_color(ctx, GColorLightGray);
   draw_text_vcenter(ctx, hint,
-                    fonts_get_system_font((bh >= 200) ? FONT_KEY_GOTHIC_18
-                                                      : FONT_KEY_GOTHIC_14),
+                    fonts_get_system_font((bh >= 200) ? FONT_KEY_GOTHIC_18_BOLD
+                                                      : FONT_KEY_GOTHIC_14_BOLD),
                     GRect(0, top + clk_h + 4 + read_h + 6, w, hint_h),
                     GTextAlignmentCenter);
 }
@@ -1621,6 +1700,7 @@ static void inbox_received_callback(DictionaryIterator *iter, void *context) {
     if (!s_settings.show_stopwatch) {
       stopwatch_disable();
     }
+    ring_set_orientation((RingOrientation)s_settings.ring_orientation);
     // Apply a new timeout IMMEDIATELY if the user is already on the screen that
     // uses it; otherwise it would only take effect on the next entry there. At 0
     // the schedule_* call simply cancels the timer, so "off" applies at once too.
@@ -1660,6 +1740,10 @@ static void window_unload(Window *window) {
 
 static void init(void) {
   settings_load(&s_settings);
+  // Before the first draw, and from the STORED value: the phone's copy is
+  // minutes away, and a ring that starts the wrong way up and flips later is
+  // worse than one that was never turned.
+  ring_set_orientation((RingOrientation)s_settings.ring_orientation);
   load_cached_packet();
   if (persist_exists(NOTIFY_PERSIST_KEY)) {
     s_notified_window_ts = (uint32_t)persist_read_int(NOTIFY_PERSIST_KEY);
