@@ -25,14 +25,16 @@ var SunCalc = require("suncalc");
 // fails (the check lives in wscript), and pkjs logs a DEBUG line on every update.
 //
 // Ready-made points, chosen as edge cases:
-//   London     { lat: 51.5074, lon:  -0.1278 }  baseline, "ordinary" day; at
-//                                               UTC+0 the local day matches the
-//                                               UTC one, so a time zone cannot
-//                                               be what broke
+//   London     { lat: 51.5074, lon:  -0.1278 }  baseline, "ordinary" day
 //   Murmansk   { lat: 68.9585, lon:  33.0827 }  polar day/night: no times at all
 //   Reykjavik  { lat: 64.1466, lon: -21.9426 }  twilight nearly all night
 //   Singapore  { lat:  1.3521, lon: 103.8198 }  ~20 min golden hour, night year-round
 //   Ushuaia    { lat: -54.8019, lon: -68.3030 } southern hemisphere, inverted seasons
+//
+// The clock keeps the HOST's time zone while the astronomy moves to the point, so
+// every sun event lands displaced by the difference between the two and the ring
+// reads as turned rather than broken. Measured: London astronomy on a UTC+5 host
+// put sunrise at 10:11 against a clock showing 16:19.
 var DEBUG_LOCATION = null;
 
 // --- Settings (from Clay) ---
